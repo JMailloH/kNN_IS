@@ -4,7 +4,7 @@ http://maven.apache.org/maven-v4_0_0.xsd">
    <modelVersion>4.0.0</modelVersion>
    <version>1.0</version>
    <name>${project.artifactId}</name>
-   <groupId>kNN_IS</groupId>
+   <groupId>JMailloH</groupId>
    <artifactId>kNN_IS</artifactId>
    <inceptionYear>2016</inceptionYear>
    <properties>
