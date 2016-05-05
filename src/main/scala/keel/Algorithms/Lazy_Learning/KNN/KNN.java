@@ -25,7 +25,7 @@
 	You should have received a copy of the GNU General Public License
 	along with this program.  If not, see http://www.gnu.org/licenses/
   
-**********************************************************************/
+ **********************************************************************/
 
 /**
  * 
@@ -123,8 +123,6 @@ public class KNN extends LazyAlgorithm {
 	public KNN(double[][] train, int[] clasesTrain, int clases,
 			int numNeighbors, int distance) {
 
-		System.out.println("\n**************************\n*******      trainSize: "+train.length+"     **********\n****************************\n");
-				
 		readDataFiles(train, clasesTrain, clases);
 
 		// Naming the algorithm
@@ -200,9 +198,11 @@ public class KNN extends LazyAlgorithm {
 	 * @return Class predicted
 	 * 
 	 */
-	public ArrayList<ArrayList<Pair<Double, Integer>>> getNeighbors(double example[]) {
-		
-		ArrayList<ArrayList<Pair<Double, Integer>>> distanceClass = new ArrayList<ArrayList<Pair<Double, Integer>>>(1);
+	public ArrayList<ArrayList<Pair<Double, Integer>>> getNeighbors(
+			double example[]) {
+
+		ArrayList<ArrayList<Pair<Double, Integer>>> distanceClass = new ArrayList<ArrayList<Pair<Double, Integer>>>(
+				1);
 		distanceClass.add(null);
 
 		double minDist[];
@@ -252,12 +252,97 @@ public class KNN extends LazyAlgorithm {
 			}
 		}
 		Pair<Double, Integer> aux;
-		ArrayList<Pair<Double, Integer>> auxList = new ArrayList<Pair<Double, Integer>>(k);
+		ArrayList<Pair<Double, Integer>> auxList = new ArrayList<Pair<Double, Integer>>(
+				k);
 		for (int i = 0; i < k; i++) {
-			aux = new Pair<Double, Integer>(minDist[i], trainOutput[nearestN[i]]);
-			//System.out.println("\n\n***POR CADA INSTANCIA ME ENCUENTRO las siguientes clases***\n\n");
-			//System.out.println("trainOutput["+nearestN[i]+"] --> " + trainOutput[nearestN[i]] + "  ||  nearestN["+i+"]  --> " + nearestN[i] + "\n");
-			auxList.add(aux);	
+			aux = new Pair<Double, Integer>(minDist[i],
+					trainOutput[nearestN[i]]);
+			// System.out.println("\n\n***POR CADA INSTANCIA ME ENCUENTRO las siguientes clases***\n\n");
+			// System.out.println("trainOutput["+nearestN[i]+"] --> " +
+			// trainOutput[nearestN[i]] + "  ||  nearestN["+i+"]  --> " +
+			// nearestN[i] + "\n");
+			auxList.add(aux);
+			// distancias[i] = minDist[i];
+			// clases[i] = trainOutput[nearestN[i]];
+			distanceClass.set(0, auxList);
+		}
+
+		return distanceClass;
+
+	} // end-method
+
+	/**
+	 * Evaluates a instance to predict its class.
+	 * 
+	 * @param example
+	 *            Instance evaluated
+	 * @return Class predicted
+	 * 
+	 */
+	public ArrayList<ArrayList<Pair<Double, Integer>>> getNeighbors(
+			double example[], java.lang.Boolean categorical[]) {
+
+		ArrayList<ArrayList<Pair<Double, Integer>>> distanceClass = new ArrayList<ArrayList<Pair<Double, Integer>>>(
+				1);
+		distanceClass.add(null);
+
+		double minDist[];
+		int nearestN[];
+		// int selectedClasses[];
+		double dist;
+		// int prediction;
+		// int predictionValue;
+		boolean stop;
+
+		nearestN = new int[k];
+		minDist = new double[k];
+
+		// double distancias[] = new double[k];
+		// int clases[] = new int[k];
+
+		for (int i = 0; i < k; i++) {
+			nearestN[i] = 0;
+			minDist[i] = Double.MAX_VALUE;
+		}
+
+		// KNN Method starts here
+
+		for (int i = 0; i < trainData.length; i++) {
+
+			dist = distance(trainData[i], example, categorical);
+
+			if (dist > 0.0) { // leave-one-out
+
+				// see if it's nearer than our previous selected neighbors
+				stop = false;
+
+				for (int j = 0; j < k && !stop; j++) {
+
+					if (dist < minDist[j]) {
+
+						for (int l = k - 1; l >= j + 1; l--) {
+							minDist[l] = minDist[l - 1];
+							nearestN[l] = nearestN[l - 1];
+						}
+
+						minDist[j] = dist;
+						nearestN[j] = i;
+						stop = true;
+					}
+				}
+			}
+		}
+		Pair<Double, Integer> aux;
+		ArrayList<Pair<Double, Integer>> auxList = new ArrayList<Pair<Double, Integer>>(
+				k);
+		for (int i = 0; i < k; i++) {
+			aux = new Pair<Double, Integer>(minDist[i],
+					trainOutput[nearestN[i]]);
+			// System.out.println("\n\n***POR CADA INSTANCIA ME ENCUENTRO las siguientes clases***\n\n");
+			// System.out.println("trainOutput["+nearestN[i]+"] --> " +
+			// trainOutput[nearestN[i]] + "  ||  nearestN["+i+"]  --> " +
+			// nearestN[i] + "\n");
+			auxList.add(aux);
 			// distancias[i] = minDist[i];
 			// clases[i] = trainOutput[nearestN[i]];
 			distanceClass.set(0, auxList);
@@ -373,6 +458,42 @@ public class KNN extends LazyAlgorithm {
 		case EUCLIDEAN:
 		default:
 			dist = euclideanDistance(instance1, instance2);
+			break;
+		}
+		;
+
+		return dist;
+
+	} // end-method
+
+	/**
+	 * Computes the distance between two instances
+	 * 
+	 * @param instance1
+	 *            First instance
+	 * @param instance2
+	 *            Second instance
+	 * @return Distance calculated
+	 * 
+	 */
+	private double distance(double instance1[], double instance2[],
+			java.lang.Boolean categorical[]) {
+
+		double dist = 0.0;
+
+		switch (distanceType) {
+
+		case HVDM:
+			dist = HVDMDistance(instance1, instance2);
+			break;
+
+		case MANHATTAN:
+			dist = manhattanDistance(instance1, instance2);
+			break;
+
+		case EUCLIDEAN:
+		default:
+			dist = euclideanDistance(instance1, instance2, categorical);
 			break;
 		}
 		;

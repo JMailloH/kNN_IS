@@ -5,7 +5,7 @@ http://maven.apache.org/maven-v4_0_0.xsd">
    <name>${project.artifactId}</name>
    <groupId>JMailloH</groupId>
    <artifactId>kNN_IS</artifactId>
-   <version>1.0</version>
+   <version>2.0</version>
    <properties>
       <maven.compiler.source>1.6</maven.compiler.source>
       <maven.compiler.target>1.6</maven.compiler.target>
@@ -39,7 +39,6 @@ http://maven.apache.org/maven-v4_0_0.xsd">
    </dependencies>
    <build>
       <sourceDirectory>src/main/scala</sourceDirectory>
-      <testSourceDirectory>src/test/scala</testSourceDirectory>
       <plugins>
          <plugin>
             <groupId>net.alchim31.maven</groupId>
@@ -69,7 +68,7 @@ http://maven.apache.org/maven-v4_0_0.xsd">
                <useFile>false</useFile>
                <disableXmlReport>true</disableXmlReport>
                <!-- If you have classpath issue like NoDefClassError,... -->
-               <useManifestOnlyJar>false</useManifestOnlyJar>
+               <!--useManifestOnlyJar>false</useManifestOnlyJar-->
                <includes>
                   <include>**/*Test.*</include>
                   <include>**/*Suite.*</include>

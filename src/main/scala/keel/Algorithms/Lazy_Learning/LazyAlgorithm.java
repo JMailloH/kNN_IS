@@ -53,7 +53,6 @@ import keel.Dataset.Attribute;
 import keel.Dataset.Attributes;
 import keel.Dataset.Instance;
 import keel.Dataset.InstanceSet;
-
 import core.Files;
 
 public abstract class LazyAlgorithm {
@@ -816,6 +815,35 @@ public abstract class LazyAlgorithm {
 
 		for (int i=0; i<instance1.length; i++) {
 			length += (instance1[i]-instance2[i])*(instance1[i]-instance2[i]);
+		}
+			
+		length = Math.sqrt(length); 
+				
+		return length;
+		
+	} //end-method
+	
+	/** 
+	 * Calculates the Euclidean distance between two instances
+	 * 
+	 * @param instance1 First instance 
+	 * @param instance2 Second instance
+	 * @return The Euclidean distance
+	 * 
+	 */
+	protected double euclideanDistance(double instance1[],double instance2[], java.lang.Boolean categorical[]){
+		
+		double length=0.0;
+
+		for (int i=0; i<instance1.length; i++) {
+			if(categorical[i] && (instance1[i] != instance2[i])){
+				length += 1;
+			}else if(instance1[i] == -1 || instance2[i] == -1){
+				length += 1;
+			}else{
+				length += (instance1[i]-instance2[i])*(instance1[i]-instance2[i]);				
+
+			}
 		}
 			
 		length = Math.sqrt(length); 
