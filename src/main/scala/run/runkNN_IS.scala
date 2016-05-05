@@ -2,40 +2,12 @@ package org.apache.spark.run
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
-import org.apache.log4j.Logger
-import utils.keel.KeelParser
 import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.{ IndexToString, StringIndexer }
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.classification.kNN_IS.kNN_IS
-import java.util.Scanner
-import org.apache.spark.sql.functions.{ concat_ws, col }
-import org.apache.spark.sql.Row
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkConf
-import org.apache.spark.rdd._
-import org.apache.spark.annotation.{ Experimental, Since }
-import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.ml.util.{ DefaultParamsReadable, MetadataUtils, Identifiable }
-import org.apache.spark.ml.{ PipelineModel, PredictorParams }
-import org.apache.spark.ml.param._
-import org.apache.spark.ml.classification._
-import org.apache.spark.ml.Predictor
-import org.apache.spark.mllib.classification.{ kNN_IS => OldkNN_IS }
-import org.apache.spark.mllib.classification.{ kNN_IS => OldkNN_ISModel }
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.mllib.linalg.{ DenseVector, SparseVector, Vectors, Vector }
-import scala.collection.mutable.ListBuffer
 import org.apache.log4j.Logger
-import keel.Algorithms.Lazy_Learning.LazyAlgorithm
-import keel.Algorithms.Lazy_Learning.KNN
-import keel.Algorithms.Lazy_Learning.KNN.KNN
 import utils.keel.KeelParser
-import org.apache.spark.mllib.feature.PCAModel
 
 object runkNN_IS extends Serializable {
 
