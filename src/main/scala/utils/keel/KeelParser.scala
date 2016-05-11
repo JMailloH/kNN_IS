@@ -1,6 +1,8 @@
 package utils.keel
 
 import org.apache.spark.SparkContext
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.regression.LabeledPoint
 
 /**
  * Get the information from the header and normalize the dataset.
@@ -113,6 +115,10 @@ class KeelParser extends Serializable {
         isCategorical(auxNumFeature) = true
 
         auxNumFeature = auxNumFeature + 1
+      } else if (linesHeader(i).toUpperCase().contains("REAL") && !(linesHeader(i).toUpperCase().contains("@ATTRIBUTE CLASS"))) {
+        conv(auxNumFeature) += ("no-bound" -> 0, "no-bound" -> 0) //Do the parser for this feature
+        isCategorical(auxNumFeature) = false
+        auxNumFeature = auxNumFeature + 1 //Increase for the next feature
       }
     } //end for
 
@@ -132,16 +138,34 @@ class KeelParser extends Serializable {
     //Change the line to Array[String]
     val auxArray = line.split(",")
 
-    //Iterate over the array parsing to double each element with the knwolegde of the header
+    //Iterate over the array parsing to double each element with the knowlegde of the header
     for (i <- 0 to size - 1) {
-      if(auxArray(i) == "?"){
+      if (auxArray(i) == "?") {
         result(i) = -1
-      }else if (conv(i).contains("min") && conv(i).contains("max") && (conv(i).size == 2)) { //If dictionary have like key (only) min and max is real or integer, else, categorical
+      } else if (conv(i).contains("min") && conv(i).contains("max") && (conv(i).size == 2)) { //If dictionary have like key (only) min and max is real or integer, else, categorical
         result(i) = (auxArray(i).toDouble - conv(i).get("min").get) / (conv(i).get("max").get - conv(i).get("min").get)
+      } else if (conv(i).contains("no-bound")) {
+        result(i) = auxArray(i).toDouble
       } else {
         result(i) = conv(i).get(auxArray(i)).get
       }
     }
+
+    result
+  }
+
+  /**
+   * Parser a line to a LabeledPoint.
+   *
+   * @param conv Array[Map] with the information to parser
+   * @param line The string to be parsed
+   * @author Jesus Maillo
+   */
+  def parserToLabeledPoint(line: String): LabeledPoint = {
+    var parsed = parserToDouble(line)
+    val featureVector = Vectors.dense(parsed.init)
+    val label = parsed.last
+    val result = LabeledPoint(label, featureVector)
 
     result
   }
