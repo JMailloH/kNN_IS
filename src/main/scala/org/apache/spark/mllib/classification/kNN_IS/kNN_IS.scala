@@ -92,7 +92,7 @@ class kNN_IS(train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distance
    *
    * @return RDD[(Double, Double)]. First column Predicted class. Second Column Right class.
    */
-  def predict(sc: SparkContext): RDD[(Double, Double)] = {
+  def predict(): RDD[(Double, Double)] = {
     val testWithKey = test.zipWithIndex().map { line => (line._2.toInt, line._1) }.sortByKey().cache
     var logger = Logger.getLogger(this.getClass())
     var testBroadcast: Broadcast[Array[LabeledPoint]] = null

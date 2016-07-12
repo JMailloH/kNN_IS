@@ -80,7 +80,7 @@ object runkNN_IS extends Serializable {
       val test = sc.textFile(pathTest: String).map(line => converter.parserToLabeledPoint(line)).persist
 
       val knn = kNN_IS.setup(train, test, K, distanceType, numClass, numFeatures, numPartitionMap, numReduces, numIterations, maxWeight)
-      predictions = knn.predict(sc)
+      predictions = knn.predict()
 
     } else {
       val sqlContext = new org.apache.spark.sql.SQLContext(sc)
