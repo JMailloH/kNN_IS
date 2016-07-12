@@ -6,25 +6,22 @@ import org.apache.spark.rdd._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
 import org.apache.log4j.Logger
-import keel.Algorithms.Lazy_Learning.LazyAlgorithm
-import keel.Algorithms.Lazy_Learning.KNN
-import keel.Algorithms.Lazy_Learning.KNN.KNN
 import utils.keel.KeelParser
 
 /**
+ * Distributed kNN class.
+ *
+ *
  * @author Jesus Maillo
  */
 
-class kNN_IS (train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanceType: Int, converter: KeelParser, numPartitionMap: Int, numReduces: Int, numIterations: Int, maxWeight: Double) extends Serializable {
+class kNN_IS(train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanceType: Int, numClass: Int, numFeatures: Int, numPartitionMap: Int, numReduces: Int, numIterations: Int, maxWeight: Double) extends Serializable {
 
   //Count the samples of each data set and the number of classes
   private val numSamplesTrain = train.count()
   private val numSamplesTest = test.count()
-  private val numClass = converter.getNumClassFromHeader()
-  private val numFeatures = converter.getNumFeaturesFromHeader()
-  private val rightClasses = test.map(line => line.label).collect
 
   //Setting Iterative MapReduce
   private var inc = 0
@@ -33,46 +30,22 @@ class kNN_IS (train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanc
   private var numIter = numIterations
   private def broadcastTest(test: Array[LabeledPoint], context: SparkContext) = context.broadcast(test)
 
-  //Time variables
-  private val timeBeg = System.nanoTime
-  private var timeEnd: Long = 0
-  private var mapTimesArray: Array[Double] = null
-  private var reduceTimesArray: Array[Double] = null
-  private var iterativeTimesArray: Array[Double] = null
-
+  //Getters
   def getTrain: RDD[LabeledPoint] = train
   def getTest: RDD[LabeledPoint] = test
   def getK: Int = k
   def getDistanceType: Int = distanceType
-  def getConverter: KeelParser = converter
+  def getNumClass: Int = numClass
+  def getNumFeatures: Int = numFeatures
   def getNumPartitionMap: Int = numPartitionMap
   def getNumReduces: Int = numReduces
   def getMaxWeight: Double = maxWeight
   def getNumIterations: Int = numIterations
 
-  //Output
-  private var rightPredictedClasses: Array[Array[Array[Int]]] = null
-
-  def getRightPredictedClasses(): Array[Array[Array[Int]]] = {
-    rightPredictedClasses
-  }
-
-  def getMapTimes(): Array[Double] = {
-    mapTimesArray
-  }
-
-  def getReduceTimes(): Array[Double] = {
-    reduceTimesArray
-  }
-
-  def getIterativeTimes(): Array[Double] = {
-    iterativeTimesArray
-  }
-
-  //private var testBroadcast: Broadcast[Array[Array[Double]]] = null
-
   /**
-   * Initial setting necessary.
+   * Initial setting necessary. Auto-set the number of iterations and load the data sets and parameters.
+   *
+   * @return Instance of this class. *this*
    */
   def setup(): kNN_IS = {
 
@@ -110,359 +83,163 @@ class kNN_IS (train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanc
       topdel = numSamplesTest.toInt + 1
     }
 
-    mapTimesArray = new Array[Double](numIter)
-    reduceTimesArray = new Array[Double](numIter)
-    iterativeTimesArray = new Array[Double](numIter)
-    rightPredictedClasses = new Array[Array[Array[Int]]](numIter)
-
     this
 
   }
 
   /**
-   * Predict.
+   * Predict. kNN
+   *
+   * @return RDD[(Double, Double)]. First column Predicted class. Second Column Right class.
    */
-  def predict(sc: SparkContext) {
-    val testWithKey = test.zipWithIndex().map { line => (line._2.toInt, line._1)}.sortByKey().cache
+  def predict(sc: SparkContext): RDD[(Double, Double)] = {
+    val testWithKey = test.zipWithIndex().map { line => (line._2.toInt, line._1) }.sortByKey().cache
     var logger = Logger.getLogger(this.getClass())
     var testBroadcast: Broadcast[Array[LabeledPoint]] = null
+    var output: RDD[(Double, Double)] = null
 
-    for (i <- 0 to numIter - 1) {
+    for (i <- 0 until numIter) {
 
       //Taking the iterative initial time.
       val timeBegIterative = System.nanoTime
 
-      if (i == numIter - 1) {
-        testBroadcast = broadcastTest(testWithKey.filterByRange(subdel, topdel * 2).map(line => line._2).collect, sc)
+      if (numIter == 1)
+        testBroadcast = broadcastTest(test.collect, test.sparkContext)
+      else
+        testBroadcast = broadcastTest(testWithKey.filterByRange(subdel, topdel).map(line => line._2).collect, testWithKey.sparkContext)
+
+      if (output == null) {
+        output = testWithKey.join(train.mapPartitions(split => knn(split, testBroadcast, subdel)).reduceByKey(combine)).map(sample => calculatePredictedRightClassesFuzzy(sample)).cache
       } else {
-        testBroadcast = broadcastTest(testWithKey.filterByRange(subdel, topdel).map(line => line._2).collect, sc)
+        output = output.union(testWithKey.join(train.mapPartitions(split => knn(split, testBroadcast, subdel)).reduceByKey(combine)).map(sample => calculatePredictedRightClassesFuzzy(sample))).cache
       }
+      output.count
 
-
-      //Taking the map initial time.
-      val timeBegMap = System.nanoTime
-      //Calling KNN (Map Phase)    
-      var resultKNNPartitioned = train.mapPartitions(line => knn(line, testBroadcast, subdel)).cache //.collect
-      resultKNNPartitioned.count
-
-      var mapTimes = resultKNNPartitioned.filter(line => line._1 == -1).map(line => getMapTimes(line)).collect
-
-      var maxTime = mapTimes(0)
-
-      for (i <- 1 to mapTimes.length - 1) {
-        //if(mapTimes(i) > maxTime){
-        maxTime = maxTime + mapTimes(i)
-        //}
-      }
-
-      mapTimesArray(i) = maxTime / mapTimes.length
-
-      //Taking the reduce initial time.
-      val timeBegRed = System.nanoTime
-      //Reduce phase
-      var result = resultKNNPartitioned.reduceByKey(combine(_, _), numReduces).filter(line => line._1 != -1).collect
-      reduceTimesArray(i) = (System.nanoTime - timeBegRed) / 1e9
-
-      rightPredictedClasses(i) = calculateRightPredictedClasses(rightClasses, result, numClass)
-
-      subdel = subdel + inc
-      topdel = topdel + inc
-
+      //Update the pairs of delimiters
+      subdel = topdel + 1
+      topdel = topdel + inc + 1
       testBroadcast.destroy
-      iterativeTimesArray(i) = (System.nanoTime - timeBegIterative) / 1e9
-
-      timeEnd = System.nanoTime
     }
+
+    output
 
   }
 
   /**
-   * Write the results in HDFS
+   * Calculate the K nearest neighbor from the test set over the train set.
    *
-   */
-  def writeResults(sc: SparkContext, pathOutput: String) = {
-
-    var logger = Logger.getLogger(this.getClass())
-
-    //Write the Predictions file
-    var writerPredictions = new ListBuffer[String]
-    writerPredictions += "***Predictions.txt ==> 1th column predicted class; 2on column right class***"
-
-    for (i <- 0 to numIter - 1) {
-      var size = rightPredictedClasses(i).length - 1
-      for (j <- 0 to size) {
-        writerPredictions += rightPredictedClasses(i)(j)(0).toString + "\t" + rightPredictedClasses(i)(j)(1).toString
-      }
-    }
-    val predictionsTxt = sc.parallelize(writerPredictions, 1)
-    predictionsTxt.saveAsTextFile(pathOutput + "/Predictions.txt")
-
-    //Write the Result file
-    val confusionMatrix = calculateConfusionMatrix(rightPredictedClasses, numClass)
-    var writerResult = new ListBuffer[String]
-    writerResult += "***Results.txt ==> Contain: Confusion Matrix; Accuracy; Time of the run***\n"
-    for (i <- 0 to numClass - 1) {
-      var auxString = ""
-      for (j <- 0 to numClass - 1) {
-        auxString = auxString + confusionMatrix(i)(j).toString + "\t"
-      }
-      writerResult += auxString
-    }
-
-    val accuracy = calculateAccuracy(confusionMatrix)
-    val AUC = calculateAUC(confusionMatrix)
-    writerResult += "\n" + accuracy
-    writerResult += "\n" + AUC
-    writerResult += "\n" + (timeEnd - timeBeg) / 1e9 + " seconds\n"
-
-    val resultTxt = sc.parallelize(writerResult, 1)
-    resultTxt.saveAsTextFile(pathOutput + "/Result.txt")
-
-    var writerTimes = new ListBuffer[String]
-    writerTimes += "***Times.txt ==> Contain: run maps time; run reduce time; run clean up reduce time; Time of complete the run***"
-    var sumTimesAux = 0.0
-    for (i <- 0 to numIterations - 1) {
-      sumTimesAux = sumTimesAux + mapTimesArray(i)
-    }
-    writerTimes += "\n@mapTime\n" + sumTimesAux / numIter
-    sumTimesAux = 0.0
-    for (i <- 0 to numIterations - 1) {
-      sumTimesAux = sumTimesAux + reduceTimesArray(i)
-    }
-    writerTimes += "\n@reduceTime\n" + sumTimesAux / numIter
-    sumTimesAux = 0.0
-    for (i <- 0 to numIterations - 1) {
-      sumTimesAux = sumTimesAux + iterativeTimesArray(i)
-    }
-    writerTimes += "\n@iterativeTime\n" + sumTimesAux / numIter
-
-    writerTimes += "\n@totalRunTime\n" + (timeEnd - timeBeg) / 1e9
-
-    val timesTxt = sc.parallelize(writerTimes, 1)
-    timesTxt.saveAsTextFile(pathOutput + "/Times.txt")
-  }
-
-  /**
-   * @brief Calculate the K nearest neighbor from the test set over the train set.
-   *
-   * @param iter Data that iterate the RDD of the train set
+   * @param iter Iterator of each split of the training set.
    * @param testSet The test set in a broadcasting
-   * @param classes number of label for the objective class
-   * @param numNeighbors Value of the K nearest neighbors to calculate
-   * @param distanceType MANHATTAN = 1 ; EUCLIDEAN = 2 ; HVDM = 3
+   * @param subdel Int needed for take order when iterative version is running
+   * @return K Nearest Neighbors for this split
    */
-  def knn[T](iter: Iterator[LabeledPoint], testSet: Broadcast[Array[LabeledPoint]], subdel: Int): Iterator[(Int, Array[Array[Float]])] = { //Si queremos un Pair RDD el iterador seria iter: Iterator[(Long, Array[Double])]
-    var begTime = System.nanoTime();
-    var auxTime = System.nanoTime();
-
+  def knn[T](iter: Iterator[LabeledPoint], testSet: Broadcast[Array[LabeledPoint]], subdel: Int): Iterator[(Int, Array[Array[Float]])] = {
     // Initialization
-    var acu = new ListBuffer[Array[Double]]
-    var trainClass = new ListBuffer[Int]
-    var trainData = new ListBuffer[Array[Double]]
+    var train = new ArrayBuffer[LabeledPoint]
+    val size = testSet.value.length
 
-    //val len = testSet.value(0).length
+    var dist: Distance.Value = null
+    //Distance MANHATTAN or EUCLIDEAN
+    if (distanceType == 1)
+      dist = Distance.Manhattan
+    else
+      dist = Distance.Euclidean
 
-    //Parser to right structures
-    while (iter.hasNext) {
-      val cur = iter.next
-      trainData += cur.features.toArray
-      trainClass += cur.label.toInt
-    }
-    auxTime = System.nanoTime();
+    //Join the train set
+    while (iter.hasNext)
+      train.append(iter.next)
 
-    //Create object KNN with the necesary information
-    var outKNN = new KNN(trainData.toArray, trainClass.toArray, numClass, k, distanceType)
+    var knnMemb = new KNN(train, k, dist, numClass)
 
-    // Initialization with the first sample to get de data structure
-    val isCategorical = converter.getIfCategorical()
-    var result = outKNN.getNeighbors(testSet.value(0).features.toArray, isCategorical)
-
-    //Calculate the K nearest neighbors for each instance of the test set
-    for (i <- 1 to testSet.value.length - 1) {
-      result.add(outKNN.getNeighbors(testSet.value(i).features.toArray, isCategorical).get(0))
-    }
-
-    //Change to static array and set the key
-    val size = result.size()
-    var res = new Array[(Int, Array[Array[Float]])](size + 1)
-
-    //res(0) = new Array[Array[Array[Double]]](size+1)
     var auxSubDel = subdel
-    for (i <- 0 to size - 1) {
-      val aux = new Array[Array[Float]](k)
-      //res(i) = (i, aux)
-      for (j <- 0 to k - 1) {
-        aux(j) = new Array[Float](2)
-        aux(j)(0) = result.get(i).get(j).getFirst().toFloat
-        aux(j)(1) = result.get(i).get(j).getSecond().toFloat
+    var result = new Array[(Int, Array[Array[Float]])](size)
 
-      }
-      res(i) = (auxSubDel, aux)
+    for (i <- 0 until size) {
+      result(i) = (auxSubDel, knnMemb.neighbors(testSet.value(i).features))
       auxSubDel = auxSubDel + 1
     }
-    auxTime = System.nanoTime();
 
-    val aux = new Array[Array[Float]](k)
-    for (j <- 0 to k - 1) {
-      aux(j) = new Array[Float](2)
-      aux(j)(0) = ((System.nanoTime - begTime) / 1e9).toFloat
-      aux(j)(1) = -1
-    }
-    res(size) = (-1, aux)
-
-    res.iterator
+    result.iterator
 
   }
 
   /**
-   * @brief Join the result of the map
+   * Join the result of the map taking the nearest neighbors.
    *
    * @param mapOut1 A element of the RDD to join
    * @param mapOut2 Another element of the RDD to join
+   * @return Combine of both element with the nearest neighbors
    */
   def combine(mapOut1: Array[Array[Float]], mapOut2: Array[Array[Float]]): Array[Array[Float]] = {
 
-    //val timeBegRed = System.nanoTime
-
-    //var acumEquals = 0.0
-    val numNeighbors = mapOut1.length
     var itOut1 = 0
+    var itOut2 = 0
+    var out: Array[Array[Float]] = new Array[Array[Float]](k)
 
-    for (j <- 0 to numNeighbors - 1) { //Loop for the k neighbors
-      if (mapOut1(itOut1)(0) <= mapOut2(j)(0)) { // Update the matrix taking the k nearest neighbors
-        mapOut2(j)(0) = mapOut1(itOut1)(0)
-        mapOut2(j)(1) = mapOut1(itOut1)(1)
+    var i = 0
+    while (i < k) {
+      out(i) = new Array[Float](2)
+      if (mapOut1(itOut1)(0) <= mapOut2(itOut2)(0)) { // Update the matrix taking the k nearest neighbors
+        out(i)(0) = mapOut1(itOut1)(0)
+        out(i)(1) = mapOut1(itOut1)(1)
+        if (mapOut1(itOut1)(0) == mapOut2(itOut2)(0)) {
+          i += 1
+          if (i < k) {
+            out(i) = new Array[Float](2)
+            out(i)(0) = mapOut2(itOut2)(0)
+            out(i)(1) = mapOut2(itOut2)(1)
+            itOut2 = itOut2 + 1
+          }
+        }
         itOut1 = itOut1 + 1
+
+      } else {
+        out(i)(0) = mapOut2(itOut2)(0)
+        out(i)(1) = mapOut2(itOut2)(1)
+        itOut2 = itOut2 + 1
       }
+      i += 1
     }
 
-    //val timeEndRed = System.nanoTime
-
-    mapOut2
+    out
   }
 
   /**
-   * @brief Recolect the run map time include on the class - distance matrix
+   * Calculate majority vote and return the predicted and right class for each instance.
    *
-   * @param mapOut line of the RDD. before need a filter where key = -1
+   * @param sample Real instance of the test set and his nearest neighbors
+   * @return predicted and right class.
    */
-  def getMapTimes[T](mapOut: (Int, Array[Array[Float]])): Float = {
-    val res = mapOut._2(0)(0)
-    res
-  }
+  def calculatePredictedRightClassesFuzzy(sample: (Int, (LabeledPoint, Array[Array[Float]]))): (Double, Double) = {
 
-  /**
-   * @brief Calculate majority vote and do a matrix with predicted and right class.
-   *
-   * @param test Test set for get the right class
-   * @param predictedNeigh Class - distance matrix with the K nearest neighbor. Calculate the predicted class
-   * @param numClass Number of label for the objetive clas
-   */
-  def calculateRightPredictedClasses(test: Array[Double], predictedNeigh: Array[(Int, Array[Array[Float]])], numClass: Int): Array[Array[Int]] = {
-    val size = predictedNeigh.length
-    val numNeighbors = predictedNeigh(0)._2.length
+    val size = sample._2._2.length
     //val numFeatures = test.value.length
-    var rightPredictedClasses = new Array[Array[Int]](size)
+    val rightClass: Int = sample._2._1.label.toInt
+    val predictedNeigh = sample._2._2
 
-    var t = 0
-    for (i <- 0 to size - 1) {
-      //Auxiliaris variables for majority vote
-      var auxClas = new Array[Int](numClass)
-      for (x <- 0 to numClass - 1) {
-        auxClas(x) = 0
+    var auxClas = new Array[Int](numClass)
+    var clas = 0
+    var numVotes = 0
+    for (j <- 0 until k) {
+      auxClas(predictedNeigh(j)(1).toInt) = auxClas(predictedNeigh(j)(1).toInt) + 1
+      if (auxClas(predictedNeigh(j)(1).toInt) > numVotes) {
+        clas = predictedNeigh(j)(1).toInt
+        numVotes = auxClas(predictedNeigh(j)(1).toInt)
       }
 
-      var clas = 0
-      var numVotes = 0
-      for (j <- 0 to numNeighbors - 1) {
-        auxClas(predictedNeigh(i)._2(j)(1).toInt) = auxClas(predictedNeigh(i)._2(j)(1).toInt) + 1
-        if (auxClas(predictedNeigh(i)._2(j)(1).toInt) > numVotes) {
-          clas = predictedNeigh(i)._2(j)(1).toInt
-          numVotes = auxClas(predictedNeigh(i)._2(j)(1).toInt)
-        }
-
-      }
-      rightPredictedClasses(t) = new Array[Int](2)
-      rightPredictedClasses(t)(0) = test(predictedNeigh(i)._1).toInt
-      rightPredictedClasses(t)(1) = clas
-      t = t + 1
     }
 
-    rightPredictedClasses
+    (clas.toDouble, rightClass.toDouble)
   }
 
-  /**
-   * @brief Calculate the confusion matrix
-   *
-   * @param rightPredictedClas Array of int with right and predicted class
-   * @param numClass Number of label for the objective class
-   */
-  def calculateConfusionMatrix(rightPredictedClas: Array[Array[Array[Int]]], numClass: Int): Array[Array[Int]] = {
-    //Create and initializate the confusion matrix
-    var confusionMatrix = new Array[Array[Int]](numClass)
-    for (i <- 0 to numClass - 1) {
-      confusionMatrix(i) = new Array[Int](numClass)
-      for (j <- 0 to numClass - 1) {
-        confusionMatrix(i)(j) = 0
-      }
-    }
-
-    val numPartitionReduces = rightPredictedClas.length
-    for (i <- 0 to numPartitionReduces - 1) {
-      var size = rightPredictedClas(i).length - 1
-      for (j <- 0 to size) {
-        confusionMatrix(rightPredictedClas(i)(j)(0))(rightPredictedClas(i)(j)(1)) = confusionMatrix(rightPredictedClas(i)(j)(0))(rightPredictedClas(i)(j)(1)) + 1
-
-      }
-    }
-
-    confusionMatrix
-  }
-
-  /**
-   * @brief Calculate the accuracy with confusion matrix
-   *
-   * @param confusionMatrix
-   */
-  def calculateAccuracy(confusionMatrix: Array[Array[Int]]): Double = {
-    var right = 0.0
-    var total = 0.0
-
-    val size = confusionMatrix.length
-
-    for (i <- 0 to size - 1) {
-      for (j <- 0 to size - 1) {
-        if (i == j) {
-          right = right + confusionMatrix(i)(j)
-        }
-        total = total + confusionMatrix(i)(j)
-      }
-    }
-
-    val accuracy = right / total
-    accuracy
-  }
-
-  /**
-   * @brief Calculate the AUC with confusion matrix
-   *
-   * @param confusionMatrix
-   */
-  def calculateAUC(confusionMatrix: Array[Array[Int]]): Double = {
-    var positive = 0.0
-    var negative = 0.0
-    val size = confusionMatrix.length
-
-    if (size == 2) {
-      positive = confusionMatrix(0)(0) / confusionMatrix(1)(0)
-      negative = confusionMatrix(1)(1) / confusionMatrix(0)(1)
-    }
-
-    val AUC = (positive + negative) / 2.0
-    AUC
-  }
 }
 
+/**
+ * Distributed kNN class.
+ *
+ *
+ * @author Jesus Maillo
+ */
 object kNN_IS {
   /**
    * Initial setting necessary.
@@ -470,13 +247,13 @@ object kNN_IS {
    * @param train Data that iterate the RDD of the train set
    * @param test The test set in a broadcasting
    * @param k number of neighbors
-   * @param distanceType MANHATTAN = 1 ; EUCLIDEAN = 2 ; HVDM = 3
+   * @param distanceType MANHATTAN = 1 ; EUCLIDEAN = 2
    * @param converter Dataset's information read from the header
    * @param numPartitionMap Number of partition. Number of map tasks
    * @param numReduces Number of reduce tasks
    * @param numIterations Autosettins = -1. Number of split in the test set and number of iterations
    */
-  def setup(train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanceType: Int, converter: KeelParser, numPartitionMap: Int, numReduces: Int, numIterations: Int, maxWeight: Double) = {
-    new kNN_IS(train, test, k, distanceType, converter, numPartitionMap, numReduces, numIterations, maxWeight).setup()
+  def setup(train: RDD[LabeledPoint], test: RDD[LabeledPoint], k: Int, distanceType: Int, numClass: Int, numFeatures: Int, numPartitionMap: Int, numReduces: Int, numIterations: Int, maxWeight: Double) = {
+    new kNN_IS(train, test, k, distanceType, numClass, numFeatures, numPartitionMap, numReduces, numIterations, maxWeight).setup()
   }
 }
