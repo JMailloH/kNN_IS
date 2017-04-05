@@ -13,10 +13,10 @@ This is an open-source Spark package about an exact k-nearest neighbors classifi
 
 ##Pre-requiriments
 The following software have to get installed:
-- Sacala. Version 2.10
+- Scala. Version 2.10
 - Spark. Version 1.6.0
 - Maven. Version 3.3.3
-- JVM. Java Virtual Machine. Version 1.7.0 because Sacala run over it.
+- JVM. Java Virtual Machine. Version 1.7.0 because Scala run over it.
 
 ##Download and build with maven
 - Download source code: It is host on GitHub. To get the sources and compile them we will need git instructions. The specifically command is:
