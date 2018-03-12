@@ -1,24 +1,24 @@
-#kNN-IS: An Iterative Spark-based design of the k-Nearest Neighbors classifier for big data.
+# kNN-IS: An Iterative Spark-based design of the k-Nearest Neighbors classifier for big data.
 
 This is an open-source Spark package about an exact k-nearest neighbors classification based on Apache Spark. We take advantage of its in-memory operations to simultaneously classify big amounts of unseen cases against a big training dataset. The map phase computes the k-nearest neighbors in different splits of the training data. Afterwards, multiple reducers process the definitive neighbors from the list obtained in the map phase. The key point of this proposal lies on the management of the test set, maintaining it in memory when it is possible. Otherwise, this is split into a minimum number of pieces, applying a MapReduce per chunk, using the caching skills of Spark to reuse the previously partitioned training set. 
 
-###Cite this software as:
- **J. Maillo, S. Ramírez-Gallego, I. Triguero, F. Herrera.** _kNN-IS: An Iterative Spark-based design of the k-Nearest Neighbors classifier for big data._ Knowledge-Based Systems, in press. [doi: 10.1016/j.knosys.2016.06.012](doi: 10.1016/j.knosys.2016.06.012)
+### Cite this software as:
+ **J. Maillo, S. Ramírez-Gallego, I. Triguero, F. Herrera.** _kNN-IS: An Iterative Spark-based design of the k-Nearest Neighbors classifier for big data._ Knowledge-Based Systems 117 (2017) 3-15. [doi: 10.1016/j.knosys.2016.06.012](doi: 10.1016/j.knosys.2016.06.012)
 
 
 
 
 
-#How to use
+# How to use
 
-##Pre-requiriments
+## Pre-requiriments
 The following software have to get installed:
 - Scala. Version 2.10
 - Spark. Version 1.6.0
 - Maven. Version 3.3.3
 - JVM. Java Virtual Machine. Version 1.7.0 because Scala run over it.
 
-##Download and build with maven
+## Download and build with maven
 - Download source code: It is host on GitHub. To get the sources and compile them we will need git instructions. The specifically command is:
 ```git clone https://github.com/JMailloH/kNN_IS.git ```
 - Build jar file: Once we have the sources, we need maven and we change to root directory of the project. Thus, with the following instructions, jar file will build:
@@ -29,7 +29,7 @@ It generates the jar file under /target/ directory
 Another alternative is download by spark-package at [https://spark-packages.org/package/JMailloH/kNN_IS](https://spark-packages.org/package/JMailloH/kNN_IS)
 
 
-##How to run
+## How to run
 
 A generic sample of run could be: 
 
@@ -48,13 +48,13 @@ A generic sample of run could be:
 - ```["maximum-mem-per-node-on-GB"]``` Optional parameter. Limit on GB for each map task. Used to autosetting the number of iterations.
 - ```"mllib or ml"``` Execute the MLlib version or the MLbase version.
 
-##Output
+## Output
 Returns an RDD[(Double,Double)] with predicted class as 1st column and right class as 2on column.
 
 The output with this example is a directory store in HDFS:
  - Report.txt: contains only a file, part-00000. It shows the confusion matrix, precision and total runtime.
  
-##Example MLlib
+## Example MLlib
 
 ```scala
     val train = sc.textFile(pathTrain: String, numPartitionMap).map(line => converter.parserToLabeledPoint(line)).persist
@@ -64,7 +64,7 @@ The output with this example is a directory store in HDFS:
     predictions = knn.predict(sc)
 ```
 
-##Example ML
+## Example ML
 
 ```scala
     val sqlContext = new org.apache.spark.sql.SQLContext(sc)
@@ -97,7 +97,7 @@ The output with this example is a directory store in HDFS:
     predictions = model.transform(test).map(line => (line.get(0).asInstanceOf[Number].doubleValue(), line.get(1).asInstanceOf[Number].doubleValue()))
 ```
 
-##MulticlassMetrics example
+## MulticlassMetrics example
 
 ```scala
     val metrics = new MulticlassMetrics(predictions)
